@@ -13,9 +13,15 @@ var numReconnect = 0;
 var numReload = 0;
 
 var useWhite = false;
+var useCCT = false;
 
 var now = 0;
 var ago = 0;
+
+<!-- removeIf(!rfm69)-->
+var packets;
+var filters = [];
+<!-- endRemoveIf(!rfm69)-->
 
 // -----------------------------------------------------------------------------
 // Messages
@@ -33,13 +39,14 @@ function initMessages() {
     messages[10] = "Session expired, please reload page...";
 }
 
+<!-- removeIf(!sensor)-->
 function sensorName(id) {
     var names = [
         "DHT", "Dallas", "Emon Analog", "Emon ADC121", "Emon ADS1X15",
         "HLW8012", "V9261F", "ECH1560", "Analog", "Digital",
         "Events", "PMSX003", "BMX280", "MHZ19", "SI7021",
         "SHT3X I2C", "BH1750", "PZEM004T", "AM2320 I2C", "GUVAS12SD",
-        "TMP3X", "HC-SR04"
+        "TMP3X", "HC-SR04", "SenseAir", "GeigerTicks", "GeigerCPM"
     ];
     if (1 <= id && id <= names.length) {
         return names[id - 1];
@@ -53,7 +60,8 @@ function magnitudeType(type) {
         "Current", "Voltage", "Active Power", "Apparent Power",
         "Reactive Power", "Power Factor", "Energy", "Energy (delta)",
         "Analog", "Digital", "Events",
-        "PM1.0", "PM2.5", "PM10", "CO2", "Lux", "UV", "Distance"
+        "PM1.0", "PM2.5", "PM10", "CO2", "Lux", "UV", "Distance" , "HCHO",
+        "Local Dose Rate", "Local Dose Rate"
     ];
     if (1 <= type && type <= types.length) {
         return types[type - 1];
@@ -71,6 +79,7 @@ function magnitudeError(error) {
     }
     return "Error " + error;
 }
+<!-- endRemoveIf(!sensor)-->
 
 // -----------------------------------------------------------------------------
 // Utils
@@ -88,22 +97,17 @@ $.fn.enterKey = function (fnc) {
 };
 
 function keepTime() {
+
+    $("span[name='ago']").html(ago);
+    ago++;
+
     if (0 === now) { return; }
     var date = new Date(now * 1000);
     var text = date.toISOString().substring(0, 19).replace("T", " ");
     $("input[name='now']").val(text);
     $("span[name='now']").html(text);
-    $("span[name='ago']").html(ago);
     now++;
-    ago++;
-}
 
-// http://www.the-art-of-web.com/javascript/validate-password/
-function checkPassword(str) {
-    // at least one lowercase and one uppercase letter or number
-    // at least five characters (letters, numbers or special characters)
-    var re = /^(?=.*[A-Z\d])(?=.*[a-z])[\w~!@#$%^&*\(\)<>,.\?;:{}\[\]\\|]{5,}$/;
-    return re.test(str);
 }
 
 function zeroPad(number, positions) {
@@ -143,9 +147,14 @@ function loadTimeZones() {
 
 function validateForm(form) {
 
+    // http://www.the-art-of-web.com/javascript/validate-password/
+    // at least one lowercase and one uppercase letter or number
+    // at least five characters (letters, numbers or special characters)
+    var re_password = /^(?=.*[A-Z\d])(?=.*[a-z])[\w~!@#$%^&*\(\)<>,.\?;:{}\[\]\\|]{5,}$/;
+
     // password
     var adminPass1 = $("input[name='adminPass']", form).first().val();
-    if (adminPass1.length > 0 && !checkPassword(adminPass1)) {
+    if (adminPass1.length > 0 && !re_password.test(adminPass1)) {
         alert("The password you have entered is not valid, it must have at least 5 characters, 1 lowercase and 1 uppercase or number!");
         return false;
     }
@@ -153,6 +162,23 @@ function validateForm(form) {
     var adminPass2 = $("input[name='adminPass']", form).last().val();
     if (adminPass1 !== adminPass2) {
         alert("Passwords are different!");
+        return false;
+    }
+
+    // RFCs mandate that a hostname's labels may contain only
+    // the ASCII letters 'a' through 'z' (case-insensitive),
+    // the digits '0' through '9', and the hyphen.
+    // Hostname labels cannot begin or end with a hyphen.
+    // No other symbols, punctuation characters, or blank spaces are permitted.
+
+    // Negative lookbehind does not work in Javascript
+    // var re_hostname = new RegExp('^(?!-)[A-Za-z0-9-]{1,32}(?<!-)$');
+
+    var re_hostname = new RegExp('^(?!-)[A-Za-z0-9-]{0,31}[A-Za-z0-9]$');
+
+    var hostname = $("input[name='hostname']", form).val();
+    if (!re_hostname.test(hostname)) {
+        alert("Hostname cannot be empty and may only contain the ASCII letters ('A' through 'Z' and 'a' through 'z'), the digits '0' through '9', and the hyphen ('-')! They can neither start or end with an hyphen.");
         return false;
     }
 
@@ -185,7 +211,8 @@ function addValue(data, name, value) {
         "dczRelayIdx", "dczMagnitude",
         "tspkRelay", "tspkMagnitude",
         "ledMode",
-        "adminPass"
+        "adminPass",
+        "node", "key", "topic"
     ];
 
     if (name in data) {
@@ -288,11 +315,17 @@ function checkFirmware(file, callback) {
 
     reader.onloadend = function(evt) {
         if (FileReader.DONE === evt.target.readyState) {
-            callback(0xE9 === evt.target.result.charCodeAt(0));
+            if (0xE9 !== evt.target.result.charCodeAt(0)) callback(false);
+            if (0x03 !== evt.target.result.charCodeAt(2)) {
+                var response = window.confirm("Binary image is not using DOUT flash mode. This might cause resets in some devices. Press OK to continue.");
+                callback(response);
+            } else {
+                callback(true);
+            }
         }
     };
 
-    var blob = file.slice(0, 1);
+    var blob = file.slice(0, 3);
     reader.readAsBinaryString(blob);
 
 }
@@ -433,12 +466,8 @@ function doUpdate() {
 
         // Empty special fields
         $(".pwrExpected").val(0);
-        $("input[name='pwrResetCalibration']").
-            prop("checked", false).
-            iphoneStyle("refresh");
-        $("input[name='pwrResetE']").
-            prop("checked", false).
-            iphoneStyle("refresh");
+        $("input[name='pwrResetCalibration']").prop("checked", false);
+        $("input[name='pwrResetE']").prop("checked", false);
 
         // Change handling
         numChanged = 0;
@@ -492,7 +521,7 @@ function onFileUpload(event) {
         if (data) {
             sendAction("restore", data);
         } else {
-            alert(messages[4]);
+            window.alert(messages[4]);
         }
     };
     reader.readAsText(inputFile);
@@ -515,13 +544,12 @@ function doFactoryReset() {
     if (response === false) {
         return false;
     }
-    websock.send(JSON.stringify({"action": "factory_reset"}));
+    sendAction("factory_reset", {});
     doReload(5000);
     return false;
 }
 
-function doToggle(element, value) {
-    var id = parseInt(element.attr("data"), 10);
+function doToggle(id, value) {
     sendAction("relay", {id: id, status: value ? 1 : 0 });
     return false;
 }
@@ -552,6 +580,56 @@ function doDebugClear() {
     return false;
 }
 
+<!-- removeIf(!rfm69)-->
+
+function doClearCounts() {
+    sendAction("clear-counts", {});
+    return false;
+}
+
+function doClearMessages() {
+    packets.clear().draw(false);
+    return false;
+}
+
+function doFilter(e) {
+    var index = packets.cell(this).index();
+    if (index == 'undefined') return;
+    var c = index.column;
+    var column = packets.column(c);
+    if (filters[c]) {
+        filters[c] = false;
+        column.search("");
+        $(column.header()).removeClass("filtered");
+    } else {
+        filters[c] = true;
+        var data = packets.row(this).data();
+        if (e.which == 1) {
+            column.search('^' + data[c] + '$', true, false );
+        } else {
+            column.search('^((?!(' + data[c] + ')).)*$', true, false );
+        }
+        $(column.header()).addClass("filtered");
+    }
+    column.draw();
+    return false;
+}
+
+function doClearFilters() {
+    for (var i = 0; i < packets.columns()[0].length; i++) {
+        if (filters[i]) {
+            filters[i] = false;
+            var column = packets.column(i);
+            column.search("");
+            $(column.header()).removeClass("filtered");
+            column.draw();
+        }
+    }
+    return false;
+}
+
+<!-- endRemoveIf(!rfm69)-->
+
 // -----------------------------------------------------------------------------
 // Visualization
 // -----------------------------------------------------------------------------
@@ -565,10 +643,7 @@ function toggleMenu() {
 function showPanel() {
     $(".panel").hide();
     if ($("#layout").hasClass("active")) { toggleMenu(); }
-    $("#" + $(this).attr("data")).show().
-        find("input[type='checkbox']").
-        iphoneStyle("calculateDimensions").
-        iphoneStyle("refresh");
+    $("#" + $(this).attr("data")).show();
 }
 
 // -----------------------------------------------------------------------------
@@ -590,6 +665,7 @@ function createRelayList(data, container, template_name) {
 
 }
 
+<!-- removeIf(!sensor)-->
 function createMagnitudeList(data, container, template_name) {
 
     var current = $("#" + container + " > div").length;
@@ -606,6 +682,29 @@ function createMagnitudeList(data, container, template_name) {
     }
 
 }
+<!-- endRemoveIf(!sensor)-->
+
+// -----------------------------------------------------------------------------
+// RFM69
+// -----------------------------------------------------------------------------
+
+<!-- removeIf(!rfm69)-->
+function addMapping() {
+    var template = $("#nodeTemplate .pure-g")[0];
+    var line = $(template).clone();
+    var tabindex = $("#mapping > div").length * 3 + 50;
+    $(line).find("input").each(function() {
+        $(this).attr("tabindex", tabindex++);
+    });
+    $(line).find("button").on('click', delMapping);
+    line.appendTo("#mapping");
+}
+
+function delMapping() {
+    var parent = $(this).parent().parent();
+    $(parent).remove();
+}
+<!-- endRemoveIf(!rfm69)-->
 
 // -----------------------------------------------------------------------------
 // Wifi
@@ -647,6 +746,7 @@ function addNetwork() {
 // -----------------------------------------------------------------------------
 // Relays scheduler
 // -----------------------------------------------------------------------------
+
 function delSchedule() {
     var parent = $(this).parents(".pure-g");
     $(parent).remove();
@@ -658,6 +758,7 @@ function moreSchedule() {
 }
 
 function addSchedule(event) {
+
     var numSchedules = $("#schedules > div").length;
     if (numSchedules >= maxSchedules) {
         alert("Max number of schedules reached");
@@ -680,13 +781,12 @@ function addSchedule(event) {
     $(line).find(".button-del-schedule").on("click", delSchedule);
     $(line).find(".button-more-schedule").on("click", moreSchedule);
     line.appendTo("#schedules");
+    $(line).find("input[type='checkbox']").prop("checked", false);
 
-    $(line).find("input[type='checkbox']").
-        prop("checked", false).
-        iphoneStyle("calculateDimensions").
-        iphoneStyle("refresh");
+    initCheckboxes();
 
     return line;
+
 }
 
 // -----------------------------------------------------------------------------
@@ -704,15 +804,8 @@ function initRelays(data) {
         // Add relay fields
         var line = $(template).clone();
         $(".id", line).html(i);
-        $("input", line).attr("data", i);
+        $(":checkbox", line).prop('checked', data[i]).attr("data", i);
         line.appendTo("#relays");
-        $("input[type='checkbox']", line).iphoneStyle({
-            onChange: doToggle,
-            resizeContainer: true,
-            resizeHandle: true,
-            checkedLabel: "ON",
-            uncheckedLabel: "OFF"
-        });
 
         // Populate the relay SELECTs
         $("select.isrelay").append(
@@ -720,6 +813,59 @@ function initRelays(data) {
 
     }
 
+}
+
+function initCheckboxes() {
+
+    var setCheckbox = function(element, value) {
+        var container = $(".toggle-container", $(element));
+        if (value) {
+            container.css("clipPath", "inset(0 0 0 50%)");
+            container.css("backgroundColor", "#00c000");
+        } else {
+            container.css("clipPath", "inset(0 50% 0 0)");
+            container.css("backgroundColor", "#c00000");
+        }
+    }
+
+    $(".checkbox-container")
+
+        .each(function() {
+            var status = $(this).next().prop('checked');
+            setCheckbox(this, status);
+        })
+        .off('click')
+        .on('click', function() {
+
+            var checkbox = $(this).next();
+
+            var status = checkbox.prop('checked');
+            status = !status;
+            checkbox.prop('checked', status);
+            setCheckbox(this, status);
+
+            if ("relay" == checkbox.attr('name')) {
+                var id = parseInt(checkbox.attr('data'), 10);
+                doToggle(id, status);
+            }
+
+        });
+
+}
+
+function createCheckboxes() {
+
+    $("input[type='checkbox']").each(function() {
+
+        var text_on = $(this).attr("on") || "YES";
+        var text_off = $(this).attr("off") || "NO";
+
+        var toggles = "<div class=\"toggle\"><p>" + text_on + "</p></div><div class=\"toggle\"><p>" + text_off + "</p></div>";
+        var content = "<div class=\"checkbox-container\"><div class=\"inner-container\">" + toggles
+            + "</div><div class=\"inner-container toggle-container\">" + toggles + "</div></div>";
+        $(this).before(content).hide();
+
+    });
 
 }
 
@@ -749,6 +895,7 @@ function initRelayConfig(data) {
 // Sensors & Magnitudes
 // -----------------------------------------------------------------------------
 
+<!-- removeIf(!sensor)-->
 function initMagnitudes(data) {
 
     // check if already initialized
@@ -767,10 +914,13 @@ function initMagnitudes(data) {
     }
 
 }
+<!-- endRemoveIf(!sensor)-->
 
 // -----------------------------------------------------------------------------
 // Lights
 // -----------------------------------------------------------------------------
+
+<!-- removeIf(!light)-->
 
 function initColorRGB() {
 
@@ -799,6 +949,22 @@ function initColorRGB() {
         sendAction("color", {brightness: value});
     });
 
+}
+
+function initCCT() {
+
+  // check if already initialized
+  var done = $("#cct > div").length;
+  if (done > 0) { return; }
+
+  $("#miredsTemplate").children().clone().appendTo("#cct");
+
+  $("#mireds").on("change", function() {
+    var value = $(this).val();
+    var parent = $(this).parents(".pure-g");
+    $("span", parent).html(value);
+    sendAction("mireds", {mireds: value});
+  });
 }
 
 function initColorHSV() {
@@ -838,6 +1004,9 @@ function initChannels(num) {
         max = num % 3;
         if ((max > 0) & useWhite) {
             max--;
+            if (useCCT) {
+              max--;
+            }
         }
     }
     var start = num - max;
@@ -851,27 +1020,33 @@ function initChannels(num) {
     };
 
     // add templates
+    var i = 0;
     var template = $("#channelTemplate").children();
-    for (var i=0; i<max; i++) {
+    for (i=0; i<max; i++) {
 
         var channel_id = start + i;
         var line = $(template).clone();
         $("span.slider", line).attr("data", channel_id);
         $("input.slider", line).attr("data", channel_id).on("change", onChannelSliderChange);
-        $("label", line).html("Channel " + (channel_id + 1));
+        $("label", line).html("Channel #" + channel_id);
 
         line.appendTo("#channels");
 
+    }
+
+    for (i=0; i<num; i++) {
         $("select.islight").append(
             $("<option></option>").attr("value",i).text("Channel #" + i));
-
     }
 
 }
+<!-- endRemoveIf(!light)-->
 
 // -----------------------------------------------------------------------------
 // RFBridge
 // -----------------------------------------------------------------------------
+
+<!-- removeIf(!rfbridge)-->
 
 function rfbLearn() {
     var parent = $(this).parents(".pure-g");
@@ -911,6 +1086,7 @@ function addRfbNode() {
 
     return line;
 }
+<!-- endRemoveIf(!rfbridge)-->
 
 // -----------------------------------------------------------------------------
 // Processing
@@ -959,6 +1135,8 @@ function processData(data) {
         // RFBridge
         // ---------------------------------------------------------------------
 
+        <!-- removeIf(!rfbridge)-->
+
         if ("rfbCount" === key) {
             for (i=0; i<data.rfbCount; i++) { addRfbNode(); }
             return;
@@ -976,10 +1154,57 @@ function processData(data) {
             }
             return;
         }
+        <!-- endRemoveIf(!rfbridge)-->
+
+        // ---------------------------------------------------------------------
+        // RFM69
+        // ---------------------------------------------------------------------
+
+        <!-- removeIf(!rfm69)-->
+
+        if (key == "packet") {
+            var packet = data.packet;
+            var d = new Date();
+            packets.row.add([
+                d.toLocaleTimeString('en-US', { hour12: false }),
+                packet.senderID,
+                packet.packetID,
+                packet.targetID,
+                packet.key,
+                packet.value,
+                packet.rssi,
+                packet.duplicates,
+                packet.missing,
+            ]).draw(false);
+            return;
+        }
+
+        if (key == "mapping") {
+			for (var i in data.mapping) {
+
+				// add a new row
+				addMapping();
+
+				// get group
+				var line = $("#mapping .pure-g")[i];
+
+				// fill in the blanks
+				var mapping = data.mapping[i];
+				Object.keys(mapping).forEach(function(key) {
+				    var id = "input[name=" + key + "]";
+				    if ($(id, line).length) $(id, line).val(mapping[key]).attr("original", mapping[key]);
+				});
+			}
+			return;
+		}
+
+        <!-- endRemoveIf(!rfm69)-->
 
         // ---------------------------------------------------------------------
         // Lights
         // ---------------------------------------------------------------------
+
+        <!-- removeIf(!light)-->
 
         if ("rgb" === key) {
             initColorRGB();
@@ -1016,13 +1241,28 @@ function processData(data) {
             return;
         }
 
+        if ("mireds" === key) {
+            $("#mireds").val(value);
+            $("span.mireds").html(value);
+            return;
+        }
+
         if ("useWhite" === key) {
             useWhite = value;
         }
 
+        if ("useCCT" === key) {
+            initCCT();
+            useCCT = value;
+        }
+
+        <!-- endRemoveIf(!light)-->
+
         // ---------------------------------------------------------------------
         // Sensors & Magnitudes
         // ---------------------------------------------------------------------
+
+        <!-- removeIf(!sensor)-->
 
         if ("magnitudes" === key) {
             initMagnitudes(value);
@@ -1038,6 +1278,8 @@ function processData(data) {
             }
             return;
         }
+
+        <!-- endRemoveIf(!sensor)-->
 
         // ---------------------------------------------------------------------
         // WiFi
@@ -1090,9 +1332,7 @@ function processData(data) {
                     var sch_value = schedule[key];
                     $("input[name='" + key + "']", sch_line).val(sch_value);
                     $("select[name='" + key + "']", sch_line).prop("value", sch_value);
-                    $("input[type='checkbox'][name='" + key + "']", sch_line).
-                        prop("checked", sch_value).
-                        iphoneStyle("refresh");
+                    $("input[type='checkbox'][name='" + key + "']", sch_line).prop("checked", sch_value);
                 });
             }
             return;
@@ -1105,12 +1345,7 @@ function processData(data) {
         if ("relayStatus" === key) {
             initRelays(value);
             for (i in value) {
-
-                // Set the status for each relay
-                $("input.relayStatus[data='" + i + "']").
-                    prop("checked", value[i]).
-                    iphoneStyle("refresh");
-
+                $("input[name='relay'][data='" + i + "']").prop("checked", value[i]);
             }
             return;
         }
@@ -1132,10 +1367,12 @@ function processData(data) {
         }
 
         // Domoticz - Magnitudes
+        <!-- removeIf(!sensor)-->
         if ("dczMagnitudes" === key) {
             createMagnitudeList(value, "dczMagnitudes", "dczMagnitudeTemplate");
             return;
         }
+        <!-- endRemoveIf(!sensor)-->
 
         // ---------------------------------------------------------------------
         // Thingspeak
@@ -1148,10 +1385,12 @@ function processData(data) {
         }
 
         // Thingspeak - Magnitudes
+        <!-- removeIf(!sensor)-->
         if ("tspkMagnitudes" === key) {
             createMagnitudeList(value, "tspkMagnitudes", "tspkMagnitudeTemplate");
             return;
         }
+        <!-- endRemoveIf(!sensor)-->
 
         // ---------------------------------------------------------------------
         // General
@@ -1165,7 +1404,7 @@ function processData(data) {
 
         // Web log
         if ("weblog" === key) {
-            $("#weblog").append(value);
+            $("#weblog").append(new Text(value));
             $("#weblog").scrollTop($("#weblog")[0].scrollHeight - $("#weblog").height());
             return;
         }
@@ -1174,13 +1413,18 @@ function processData(data) {
         var position = key.indexOf("Visible");
         if (position > 0 && position === key.length - 7) {
             var module = key.slice(0,-7);
-            $(".module-" + module).show();
+            $(".module-" + module).css("display", "inherit");
             return;
+        }
+
+        if ("deviceip" === key) {
+            var a_href = $("span[name='" + key + "']").parent();
+            a_href.attr("href", "//" + value);
+            a_href.next().attr("href", "telnet://" + value);
         }
 
         if ("now" === key) {
             now = value;
-            ago = 0;
             return;
         }
 
@@ -1189,9 +1433,6 @@ function processData(data) {
         }
 
         // Pre-process
-        if ("network" === key) {
-            value = value.toUpperCase();
-        }
         if ("mqttStatus" === key) {
             value = value ? "CONNECTED" : "NOT CONNECTED";
         }
@@ -1199,6 +1440,7 @@ function processData(data) {
             value = value ? "SYNC'D" : "NOT SYNC'D";
         }
         if ("uptime" === key) {
+            ago = 0;
             var uptime  = parseInt(value, 10);
             var seconds = uptime % 60; uptime = parseInt(uptime / 60, 10);
             var minutes = uptime % 60; uptime = parseInt(uptime / 60, 10);
@@ -1218,9 +1460,7 @@ function processData(data) {
         var input = $("input[name='" + key + "']");
         if (input.length > 0) {
             if (input.attr("type") === "checkbox") {
-                input.
-                    prop("checked", value).
-                    iphoneStyle("refresh");
+                input.prop("checked", value);
             } else if (input.attr("type") === "radio") {
                 input.val([value]);
             } else {
@@ -1252,6 +1492,7 @@ function processData(data) {
     }
 
     resetOriginals();
+    initCheckboxes();
 
 }
 
@@ -1297,27 +1538,44 @@ function hasChanged() {
 
 function initUrls(root) {
 
-    var paths = ["ws", "upgrade", "config"];
+    var paths = ["ws", "upgrade", "config", "auth"];
 
     urls["root"] = root;
     paths.forEach(function(path) {
         urls[path] = new URL(path, root);
+        urls[path].protocol = root.protocol;
     });
 
-    urls.ws.protocol = "ws";
+    if (root.protocol == "https:") {
+        urls.ws.protocol = "wss:";
+    } else {
+        urls.ws.protocol = "ws:";
+    }
 
 }
 
 function connectToURL(url) {
+
     initUrls(url);
-    if (websock) { websock.close(); }
-    websock = new WebSocket(urls.ws.href);
-    websock.onmessage = function(evt) {
-        var data = getJson(evt.data.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t"));
-        if (data) {
-            processData(data);
-        }
-    };
+
+    $.ajax({
+        'method': 'GET',
+        'crossDomain': true,
+        'url': urls.auth.href,
+        'xhrFields': { 'withCredentials': true }
+    }).done(function(data) {
+        if (websock) { websock.close(); }
+        websock = new WebSocket(urls.ws.href);
+        websock.onmessage = function(evt) {
+            var data = getJson(evt.data.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t"));
+            if (data) {
+                processData(data);
+            }
+        };
+    }).fail(function() {
+        // Nothing to do, reload page and retry
+    });
+
 }
 
 function connect(host) {
@@ -1331,10 +1589,16 @@ function connectToCurrentURL() {
     connectToURL(new URL(window.location));
 }
 
+function getParameterByName(name) {
+    var match = RegExp('[?&]' + name + '=([^&]*)').exec(window.location.search);
+    return match && decodeURIComponent(match[1].replace(/\+/g, ' '));
+}
+
 $(function() {
 
     initMessages();
     loadTimeZones();
+    createCheckboxes();
     setInterval(function() { keepTime(); }, 1000);
 
     $("#menuLink").on("click", toggleMenu);
@@ -1369,13 +1633,36 @@ $(function() {
         $(".more", addNetwork()).toggle();
     });
     $(".button-add-switch-schedule").on("click", { schType: 1 }, addSchedule);
+    <!-- removeIf(!light)-->
     $(".button-add-light-schedule").on("click", { schType: 2 }, addSchedule);
+    <!-- endRemoveIf(!light)-->
+
+    <!-- removeIf(!rfm69)-->
+    $(".button-add-mapping").on('click', addMapping);
+    $(".button-del-mapping").on('click', delMapping);
+    $(".button-clear-counts").on('click', doClearCounts);
+    $(".button-clear-messages").on('click', doClearMessages);
+    $(".button-clear-filters").on('click', doClearFilters);
+    $('#packets tbody').on('mousedown', 'td', doFilter);
+    packets = $('#packets').DataTable({
+        "paging": false
+    });
+    for (var i = 0; i < packets.columns()[0].length; i++) {
+        filters[i] = false;
+    }
+    <!-- endRemoveIf(!rfm69)-->
 
     $(document).on("change", "input", hasChanged);
     $(document).on("change", "select", hasChanged);
 
     // don't autoconnect when opening from filesystem
     if (window.location.protocol === "file:") { return; }
-    connectToCurrentURL();
+
+    // Check host param in query string
+    if (host = getParameterByName('host')) {
+        connect(host);
+    } else {
+        connectToCurrentURL();
+    }
 
 });

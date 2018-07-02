@@ -20,9 +20,10 @@ class PZEM004TSensor : public BaseSensor {
         // Public
         // ---------------------------------------------------------------------
 
-        PZEM004TSensor(): BaseSensor(), _data() {
+        PZEM004TSensor(): BaseSensor() {
             _count = 4;
             _sensor_id = SENSOR_PZEM004T_ID;
+            _ip = IPAddress(192,168,1,1);
         }
 
         ~PZEM004TSensor() {
@@ -43,7 +44,7 @@ class PZEM004TSensor : public BaseSensor {
             _dirty = true;
         }
 
-        void setSerial(Stream & serial) {
+        void setSerial(HardwareSerial * serial) {
             _serial = serial;
             _dirty = true;
         }
@@ -58,10 +59,6 @@ class PZEM004TSensor : public BaseSensor {
             return _pin_tx;
         }
 
-        Stream & getSerial() {
-            return _serial;
-        }
-
         // ---------------------------------------------------------------------
         // Sensor API
         // ---------------------------------------------------------------------
@@ -72,10 +69,10 @@ class PZEM004TSensor : public BaseSensor {
             if (!_dirty) return;
 
             if (_pzem) delete _pzem;
-            if (_serial == NULL) {
-                _pzem = PZEM004T(_pin_rx, _pin_tx);
+            if (_serial) {
+                _pzem = new PZEM004T(_serial);
             } else {
-                _pzem = PZEM004T(_serial);
+                _pzem = new PZEM004T(_pin_rx, _pin_tx);
             }
             _pzem->setAddress(_ip);
 
@@ -87,7 +84,11 @@ class PZEM004TSensor : public BaseSensor {
         // Descriptive name of the sensor
         String description() {
             char buffer[28];
-            snprintf(buffer, sizeof(buffer), "PZEM004T @ SwSerial(%u,%u)", _pin_rx, _pin_tx);
+            if (_serial) {
+                snprintf(buffer, sizeof(buffer), "PZEM004T @ HwSerial");
+            } else {
+                snprintf(buffer, sizeof(buffer), "PZEM004T @ SwSerial(%u,%u)", _pin_rx, _pin_tx);
+            }
             return String(buffer);
         }
 
@@ -112,11 +113,13 @@ class PZEM004TSensor : public BaseSensor {
 
         // Current value for slot # index
         double value(unsigned char index) {
-            if (index == 0) return _pzem->current(_ip);
-            if (index == 1) return _pzem->voltage(_ip);
-            if (index == 2) return _pzem->power(_ip);
-            if (index == 3) return _pzem->energy(_ip);
-            return 0;
+            double response = 0;
+            if (index == 0) response = _pzem->current(_ip);
+            if (index == 1) response = _pzem->voltage(_ip);
+            if (index == 2) response = _pzem->power(_ip);
+            if (index == 3) response = _pzem->energy(_ip) * 3600;
+            if (response < 0) response = 0;
+            return response;
         }
 
     protected:
@@ -127,8 +130,8 @@ class PZEM004TSensor : public BaseSensor {
 
         unsigned int _pin_rx = PZEM004T_RX_PIN;
         unsigned int _pin_tx = PZEM004T_TX_PIN;
-        Stream & _serial = NULL;
-        IPAddress _ip(192,168,1,1);
+        IPAddress _ip;
+        HardwareSerial * _serial = NULL;
         PZEM004T * _pzem = NULL;
 
 };
