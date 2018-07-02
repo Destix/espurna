@@ -14,7 +14,7 @@
 #endif
 
 #ifndef USE_PASSWORD
-#define USE_PASSWORD            1               // Insecurity caution! Disabling this will disable password querying completely.
+#define USE_PASSWORD            0               // Insecurity caution! Disabling this will disable password querying completely.
 #endif
 
 #ifndef LOOP_DELAY_TIME
@@ -238,7 +238,7 @@
 
 // Allowed actual relay changes inside requests flood protection window
 #ifndef RELAY_FLOOD_CHANGES
-#define RELAY_FLOOD_CHANGES         5
+#define RELAY_FLOOD_CHANGES         8
 #endif
 
 // Pulse with in milliseconds for a latched relay
@@ -279,11 +279,11 @@
 
 // Optional hardcoded configuration (up to 2 networks)
 #ifndef WIFI1_SSID
-#define WIFI1_SSID                  ""
+#define WIFI1_SSID                  "Breeze legacy"
 #endif
 
 #ifndef WIFI1_PASS
-#define WIFI1_PASS                  ""
+#define WIFI1_PASS                  "catdogfish238"
 #endif
 
 #ifndef WIFI1_IP
@@ -542,7 +542,7 @@
 
 
 #ifndef MQTT_ENABLED
-#define MQTT_ENABLED                0               // Do not enable MQTT connection by default
+#define MQTT_ENABLED                1               // Do not enable MQTT connection by default
 #endif
 
 #ifndef MQTT_AUTOCONNECT
@@ -551,7 +551,7 @@
 
                                                     // autoconnect to the first MQTT broker found if none defined
 #ifndef MQTT_SERVER
-#define MQTT_SERVER                 ""              // Default MQTT broker address
+#define MQTT_SERVER                 "192.168.1.21"              // Default MQTT broker address
 #endif
 
 #ifndef MQTT_USER
@@ -830,7 +830,7 @@
 #define HOMEASSISTANT_SUPPORT   MQTT_SUPPORT    // Build with home assistant support (if MQTT, 1.64Kb)
 #endif
 
-#define HOMEASSISTANT_ENABLED   0               // Integration not enabled by default
+#define HOMEASSISTANT_ENABLED   1               // Integration not enabled by default
 #define HOMEASSISTANT_PREFIX    "homeassistant" // Default MQTT prefix
 
 // -----------------------------------------------------------------------------
@@ -871,7 +871,7 @@
 // -----------------------------------------------------------------------------
 
 #ifndef THINGSPEAK_SUPPORT
-#define THINGSPEAK_SUPPORT          1               // Enable Thingspeak support by default (2.56Kb)
+#define THINGSPEAK_SUPPORT          0               // Enable Thingspeak support by default (2.56Kb)
 #endif
 
 #ifndef THINGSPEAK_ENABLED
@@ -932,11 +932,11 @@
 #endif
 
 #ifndef NTP_TIME_OFFSET
-#define NTP_TIME_OFFSET             60              // Default timezone offset (GMT+1)
+#define NTP_TIME_OFFSET             180              // Default timezone offset (GMT+1)
 #endif
 
 #ifndef NTP_DAY_LIGHT
-#define NTP_DAY_LIGHT               1               // Enable daylight time saving by default
+#define NTP_DAY_LIGHT               0               // Enable daylight time saving by default
 #endif
 
 #ifndef NTP_SYNC_INTERVAL
@@ -968,7 +968,7 @@
 // this device should be discoberable and respond to Alexa commands.
 // Both ALEXA_SUPPORT and alexaEnabled should be 1 for Alexa support to work.
 #ifndef ALEXA_ENABLED
-#define ALEXA_ENABLED               1
+#define ALEXA_ENABLED               0
 #endif
 
 // -----------------------------------------------------------------------------
