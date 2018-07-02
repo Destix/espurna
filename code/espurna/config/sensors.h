@@ -58,12 +58,33 @@
 // =============================================================================
 
 //------------------------------------------------------------------------------
+// AM2320 Humidity & Temperature sensor over I2C
+// Enable support by passing AM2320_SUPPORT=1 build flag
+//------------------------------------------------------------------------------
+
+#ifndef AM2320_SUPPORT
+#define AM2320_SUPPORT                  0
+#endif
+
+#ifndef AM2320_ADDRESS
+#define AM2320_ADDRESS                  0x00    // 0x00 means auto
+#endif
+
+//------------------------------------------------------------------------------
 // Analog sensor
 // Enable support by passing ANALOG_SUPPORT=1 build flag
 //--------------------------------------------------------------------------------
 
 #ifndef ANALOG_SUPPORT
 #define ANALOG_SUPPORT                  0
+#endif
+
+#ifndef ANALOG_SAMPLES
+#define ANALOG_SAMPLES                  10      // Number of samples
+#endif
+
+#ifndef ANALOG_DELAY
+#define ANALOG_DELAY                    0       // Delay between samples in micros
 #endif
 
 //------------------------------------------------------------------------------
@@ -272,7 +293,49 @@
 #define EVENTS_INTERRUPT_MODE           RISING  // RISING, FALLING, BOTH
 #endif
 
-#define EVENTS_DEBOUNCE                 50      // Do not register events within less than 10 millis
+#define EVENTS_DEBOUNCE                 50      // Do not register events within less than 50 millis
+
+//------------------------------------------------------------------------------
+// Geiger sensor
+// Enable support by passing GEIGER_SUPPORT=1 build flag
+//------------------------------------------------------------------------------
+
+#ifndef GEIGER_SUPPORT
+#define GEIGER_SUPPORT                  0       // Do not build with geiger support by default
+#endif
+
+#ifndef GEIGER_PIN
+#define GEIGER_PIN                      D1       // GPIO to monitor "D1" => "GPIO5"
+#endif
+
+#ifndef GEIGER_PIN_MODE
+#define GEIGER_PIN_MODE                 INPUT   // INPUT, INPUT_PULLUP
+#endif
+
+#ifndef GEIGER_INTERRUPT_MODE
+#define GEIGER_INTERRUPT_MODE           RISING  // RISING, FALLING, BOTH
+#endif
+
+#define GEIGER_DEBOUNCE                 25      // Do not register events within less than 25 millis.
+                                                // Value derived here: Debounce time 25ms, because https://github.com/Trickx/espurna/wiki/Geiger-counter
+
+#define GEIGER_CPM2SIEVERT              240     // CPM to µSievert per hour conversion factor
+                                                // Typically the literature uses the invers, but I find an integer type more convienient.
+#define GEIGER_REPORT_SIEVERTS          1       // Enabler for local dose rate reports in µSv/h
+#define GEIGER_REPORT_CPM               1       // Enabler for local dose rate reports in counts per minute
+
+//------------------------------------------------------------------------------
+// GUVAS12SD UV Sensor (analog)
+// Enable support by passing GUVAS12SD_SUPPORT=1 build flag
+//------------------------------------------------------------------------------
+
+#ifndef GUVAS12SD_SUPPORT
+#define GUVAS12SD_SUPPORT               0
+#endif
+
+#ifndef GUVAS12SD_PIN
+#define GUVAS12SD_PIN                   14
+#endif
 
 //------------------------------------------------------------------------------
 // HC-SR04
@@ -328,7 +391,27 @@
 #define HLW8012_VOLTAGE_R_DOWN          ( 1000 )        // Downstream voltage resistor
 #endif
 
+#ifndef HLW8012_CURRENT_RATIO
+#define HLW8012_CURRENT_RATIO           0       // Set to 0 to use factory defaults
+#endif
+
+#ifndef HLW8012_VOLTAGE_RATIO
+#define HLW8012_VOLTAGE_RATIO           0       // Set to 0 to use factory defaults
+#endif
+
+#ifndef HLW8012_POWER_RATIO
+#define HLW8012_POWER_RATIO             0       // Set to 0 to use factory defaults
+#endif
+
+#ifndef HLW8012_USE_INTERRUPTS
 #define HLW8012_USE_INTERRUPTS          1       // Use interrupts to trap HLW8012 signals
+#endif
+
+#ifndef HLW8012_INTERRUPT_ON
+#define HLW8012_INTERRUPT_ON            CHANGE  // When to trigger the interrupt
+                                                // Use CHANGE for HLW8012
+                                                // Use FALLING for BL0937 / HJL0
+#endif
 
 //------------------------------------------------------------------------------
 // MHZ19 CO2 sensor
@@ -339,11 +422,70 @@
 #define MHZ19_SUPPORT                   0
 #endif
 
+#ifndef MHZ19_RX_PIN
 #define MHZ19_RX_PIN                    13
+#endif
+
+#ifndef MHZ19_TX_PIN
 #define MHZ19_TX_PIN                    15
+#endif
 
 //------------------------------------------------------------------------------
-// Particle Monitor based on Plantower PMSX003
+// NTC sensor
+// Enable support by passing NTC_SUPPORT=1 build flag
+//--------------------------------------------------------------------------------
+
+#ifndef NTC_SUPPORT
+#define NTC_SUPPORT                     0
+#endif
+
+#ifndef NTC_SAMPLES
+#define NTC_SAMPLES                     10      // Number of samples
+#endif
+
+#ifndef NTC_DELAY
+#define NTC_DELAY                       0       // Delay between samples in micros
+#endif
+
+#ifndef NTC_R_UP
+#define NTC_R_UP                        0       // Resistor upstream, set to 0 if none
+#endif
+
+#ifndef NTC_R_DOWN
+#define NTC_R_DOWN                      10000   // Resistor downstream, set to 0 if none
+#endif
+
+#ifndef NTC_T0
+#define NTC_T0                          298.15  // 25 Celsius
+#endif
+
+#ifndef NTC_R0
+#define NTC_R0                          10000   // Resistance at T0
+#endif
+
+#ifndef NTC_BETA
+#define NTC_BETA                        3977    // Beta coeficient
+#endif
+
+//------------------------------------------------------------------------------
+// SenseAir CO2 sensor
+// Enable support by passing SENSEAIR_SUPPORT=1 build flag
+//------------------------------------------------------------------------------
+
+#ifndef SENSEAIR_SUPPORT
+#define SENSEAIR_SUPPORT                0
+#endif
+
+#ifndef SENSEAIR_RX_PIN
+#define SENSEAIR_RX_PIN                 0
+#endif
+
+#ifndef SENSEAIR_TX_PIN
+#define SENSEAIR_TX_PIN                 2
+#endif
+
+//------------------------------------------------------------------------------
+// Particle Monitor based on Plantower PMS
 // Enable support by passing PMSX003_SUPPORT=1 build flag
 //------------------------------------------------------------------------------
 
@@ -351,8 +493,24 @@
 #define PMSX003_SUPPORT                 0
 #endif
 
+#ifndef PMS_TYPE
+#define PMS_TYPE                        PMS_TYPE_X003
+#endif
+
+// You can enable smart sleep (read 6-times then sleep on 24-reading-cycles) to extend PMS sensor's life.
+// Otherwise the default lifetime of PMS sensor is about 8000-hours/1-years.
+// The PMS's fan will stop working on sleeping cycle, and will wake up on reading cycle.
+#ifndef PMS_SMART_SLEEP
+#define PMS_SMART_SLEEP                 0
+#endif
+
+#ifndef PMS_RX_PIN
 #define PMS_RX_PIN                      13
+#endif
+
+#ifndef PMS_TX_PIN
 #define PMS_TX_PIN                      15
+#endif
 
 //------------------------------------------------------------------------------
 // PZEM004T based power monitor
@@ -364,7 +522,7 @@
 #endif
 
 #ifndef PZEM004T_USE_SOFT
-#define PZEM004T_USE_SOFT               1       // Use software serial
+#define PZEM004T_USE_SOFT               0       // Software serial is not working atm, use hardware serial
 #endif
 
 #ifndef PZEM004T_RX_PIN
@@ -376,7 +534,7 @@
 #endif
 
 #ifndef PZEM004T_HW_PORT
-#define PZEM004T_HW_PORT                Serial1 // Hardware serial port (if PZEM004T_USE_SOFT == 0)
+#define PZEM004T_HW_PORT                Serial  // Hardware serial port (if PZEM004T_USE_SOFT == 0)
 #endif
 
 //------------------------------------------------------------------------------
@@ -444,49 +602,39 @@
 #define V9261F_POWER_FACTOR             153699.0
 #define V9261F_RPOWER_FACTOR            V9261F_CURRENT_FACTOR
 
-//------------------------------------------------------------------------------
-// AM2320 Humidity & Temperature sensor over I2C
-// Enable support by passing AM2320_SUPPORT=1 build flag
-//------------------------------------------------------------------------------
-
-#ifndef AM2320_SUPPORT
-#define AM2320_SUPPORT                  0
-#endif
-
-#ifndef AM2320_ADDRESS
-#define AM2320_ADDRESS                  0x00    // 0x00 means auto
-#endif
-
-//------------------------------------------------------------------------------
-// GUVAS12SD UV Sensor (analog)
-// Enable support by passing GUVAS12SD_SUPPORT=1 build flag
-//------------------------------------------------------------------------------
-
-#ifndef GUVAS12SD_SUPPORT
-#define GUVAS12SD_SUPPORT               0
-#endif
-
-#ifndef GUVAS12SD_PIN
-#define GUVAS12SD_PIN                   14
-#endif
-
 // =============================================================================
 // Sensor helpers configuration - can't move to dependencies.h
 // =============================================================================
 
 #ifndef SENSOR_SUPPORT
-#if ANALOG_SUPPORT || BH1750_SUPPORT || BMX280_SUPPORT || DALLAS_SUPPORT \
-    || DHT_SUPPORT || DIGITAL_SUPPORT || ECH1560_SUPPORT \
-    || EMON_ADC121_SUPPORT || EMON_ADS1X15_SUPPORT \
-    || EMON_ANALOG_SUPPORT || EVENTS_SUPPORT || HLW8012_SUPPORT \
-    || MHZ19_SUPPORT || PMSX003_SUPPORT || SHT3X_I2C_SUPPORT \
-    || SI7021_SUPPORT || V9261F_SUPPORT || AM2320_SUPPORT \
-    || GUVAS12SD_SUPPORT || CSE7766_SUPPORT || TMP3X_SUPPORT \
-    || HCSR04_SUPPORT
-#define SENSOR_SUPPORT                      1
-#else
-#define SENSOR_SUPPORT                      0
-#endif
+#define SENSOR_SUPPORT ( \
+    AM2320_SUPPORT || \
+    ANALOG_SUPPORT || \
+    BH1750_SUPPORT || \
+    BMX280_SUPPORT || \
+    CSE7766_SUPPORT || \
+    DALLAS_SUPPORT || \
+    DHT_SUPPORT || \
+    DIGITAL_SUPPORT || \
+    ECH1560_SUPPORT || \
+    EMON_ADC121_SUPPORT || \
+    EMON_ADS1X15_SUPPORT || \
+    EMON_ANALOG_SUPPORT || \
+    EVENTS_SUPPORT || \
+    GEIGER_SUPPORT || \
+    GUVAS12SD_SUPPORT || \
+    HCSR04_SUPPORT || \
+    HLW8012_SUPPORT || \
+    MHZ19_SUPPORT || \
+    NTC_SUPPORT || \
+    SENSEAIR_SUPPORT || \
+    PMSX003_SUPPORT || \
+    PZEM004T_SUPPORT || \
+    SHT3X_I2C_SUPPORT || \
+    SI7021_SUPPORT || \
+    TMP3X_SUPPORT || \
+    V9261F_SUPPORT \
+)
 #endif
 
 // -----------------------------------------------------------------------------
@@ -526,6 +674,10 @@
 //--------------------------------------------------------------------------------
 
 #if SENSOR_SUPPORT
+
+#if SENSOR_DEBUG
+    #include "../config/debug.h"
+#endif
 
 #include "../sensors/BaseSensor.h"
 
@@ -583,6 +735,10 @@
     #include "../sensors/EventSensor.h"
 #endif
 
+#if GEIGER_SUPPORT
+    #include "../sensors/GeigerSensor.h"       // The main file for geiger counting module
+#endif
+
 #if GUVAS12SD_SUPPORT
     #include "../sensors/GUVAS12SDSensor.h"
 #endif
@@ -601,9 +757,18 @@
     #include "../sensors/MHZ19Sensor.h"
 #endif
 
+#if NTC_SUPPORT
+    #include "../sensors/AnalogSensor.h"
+    #include "../sensors/NTCSensor.h"
+#endif
+
+#if SENSEAIR_SUPPORT
+    #include <SoftwareSerial.h>
+    #include "../sensors/SenseAirSensor.h"
+#endif
+
 #if PMSX003_SUPPORT
     #include <SoftwareSerial.h>
-    #include <PMS.h>
     #include "../sensors/PMSX003Sensor.h"
 #endif
 

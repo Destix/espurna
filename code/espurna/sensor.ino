@@ -183,6 +183,7 @@ void _sensorWebSocketStart(JsonObject& root) {
 
         #if PZEM004T_SUPPORT
             if (sensor->getID() == SENSOR_PZEM004T_ID) {
+                root["pzemVisible"] = 1;
                 root["pwrVisible"] = 1;
             }
         #endif
@@ -286,9 +287,11 @@ void _sensorPost() {
 }
 
 void _sensorReset() {
-    if (ntpSynced()) {
-        _sensor_energy_reset_ts = String(" (since ") + ntpDateTime() + String(")");
-    }
+    #if NTP_SUPPORT
+        if (ntpSynced()) {
+            _sensor_energy_reset_ts = String(" (since ") + ntpDateTime() + String(")");
+        }
+    #endif
 }
 
 // -----------------------------------------------------------------------------
@@ -310,9 +313,19 @@ void _sensorLoad() {
 
      */
 
+     #if AM2320_SUPPORT
+     {
+         AM2320Sensor * sensor = new AM2320Sensor();
+         sensor->setAddress(AM2320_ADDRESS);
+         _sensors.push_back(sensor);
+     }
+     #endif
+
     #if ANALOG_SUPPORT
     {
         AnalogSensor * sensor = new AnalogSensor();
+        sensor->setSamples(ANALOG_SAMPLES);
+        sensor->setDelay(ANALOG_DELAY);
         _sensors.push_back(sensor);
     }
     #endif
@@ -440,6 +453,26 @@ void _sensorLoad() {
     }
     #endif
 
+    #if GEIGER_SUPPORT
+    {
+        GeigerSensor * sensor = new GeigerSensor();        // Create instance of thr Geiger module.
+        sensor->setGPIO(GEIGER_PIN);                       // Interrupt pin of the attached geiger counter board.
+        sensor->setMode(GEIGER_PIN_MODE);                  // This pin is an input.
+        sensor->setDebounceTime(GEIGER_DEBOUNCE);          // Debounce time 25ms, because https://github.com/Trickx/espurna/wiki/Geiger-counter
+        sensor->setInterruptMode(GEIGER_INTERRUPT_MODE);   // Interrupt triggering: edge detection rising.
+        sensor->setCPM2SievertFactor(GEIGER_CPM2SIEVERT);  // Conversion factor from counts per minute to µSv/h
+        _sensors.push_back(sensor);
+    }
+    #endif
+
+    #if GUVAS12SD_SUPPORT
+    {
+        GUVAS12SDSensor * sensor = new GUVAS12SDSensor();
+        sensor->setGPIO(GUVAS12SD_PIN);
+        _sensors.push_back(sensor);
+    }
+    #endif
+
     #if HCSR04_SUPPORT
     {
         HCSR04Sensor * sensor = new HCSR04Sensor();
@@ -469,11 +502,35 @@ void _sensorLoad() {
     }
     #endif
 
+    #if NTC_SUPPORT
+    {
+        NTCSensor * sensor = new NTCSensor();
+        sensor->setSamples(NTC_SAMPLES);
+        sensor->setDelay(NTC_DELAY);
+        sensor->setUpstreamResistor(NTC_R_UP);
+        sensor->setDownstreamResistor(NTC_R_DOWN);
+        sensor->setBeta(NTC_BETA);
+        sensor->setR0(NTC_R0);
+        sensor->setT0(NTC_T0);
+        _sensors.push_back(sensor);
+    }
+    #endif
+
+    #if SENSEAIR_SUPPORT
+    {
+        SenseAirSensor * sensor = new SenseAirSensor();
+        sensor->setRX(SENSEAIR_RX_PIN);
+        sensor->setTX(SENSEAIR_TX_PIN);
+        _sensors.push_back(sensor);
+    }
+    #endif
+
     #if PMSX003_SUPPORT
     {
         PMSX003Sensor * sensor = new PMSX003Sensor();
         sensor->setRX(PMS_RX_PIN);
         sensor->setTX(PMS_TX_PIN);
+        sensor->setType(PMS_TYPE);
         _sensors.push_back(sensor);
     }
     #endif
@@ -524,22 +581,6 @@ void _sensorLoad() {
     }
     #endif
 
-    #if AM2320_SUPPORT
-    {
-        AM2320Sensor * sensor = new AM2320Sensor();
-        sensor->setAddress(AM2320_ADDRESS);
-        _sensors.push_back(sensor);
-    }
-    #endif
-
-    #if GUVAS12SD_SUPPORT
-    {
-        GUVAS12SDSensor * sensor = new GUVAS12SDSensor();
-        sensor->setGPIO(GUVAS12SD_PIN);
-        _sensors.push_back(sensor);
-    }
-    #endif
-
 }
 
 void _sensorCallback(unsigned char i, unsigned char type, const char * payload) {
@@ -580,7 +621,7 @@ void _sensorInit() {
             new_magnitude.min_change = 0;
             if (type == MAGNITUDE_DIGITAL) {
                 new_magnitude.filter = new MaxFilter();
-            } else if (type == MAGNITUDE_EVENTS) {
+            } else if (type == MAGNITUDE_EVENTS || type == MAGNITUDE_GEIGER_CPM|| type == MAGNITUDE_GEIGER_SIEVERT) {  // For geiger counting moving average filter is the most appropriate if needed at all.
                 new_magnitude.filter = new MovingAverageFilter();
             } else {
                 new_magnitude.filter = new MedianFilter();
@@ -619,13 +660,13 @@ void _sensorInit() {
 
                 double value;
 
-                value = getSetting("pwrRatioC", 0).toFloat();
+                value = getSetting("pwrRatioC", HLW8012_CURRENT_RATIO).toFloat();
                 if (value > 0) sensor->setCurrentRatio(value);
 
-                value = getSetting("pwrRatioV", 0).toFloat();
+                value = getSetting("pwrRatioV", HLW8012_VOLTAGE_RATIO).toFloat();
                 if (value > 0) sensor->setVoltageRatio(value);
 
-                value = getSetting("pwrRatioP", 0).toFloat();
+                value = getSetting("pwrRatioP", HLW8012_POWER_RATIO).toFloat();
                 if (value > 0) sensor->setPowerRatio(value);
 
             }

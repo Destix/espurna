@@ -1,4 +1,4 @@
-//------------------------------------------------------------------------------
+// // //------------------------------------------------------------------------------
 // Do not change this file unless you know what you are doing
 // Configuration settings are in the settings.h file
 //------------------------------------------------------------------------------
@@ -75,8 +75,13 @@
 #endif
 
 #ifndef DEBUG_UDP_PORT
-#define DEBUG_UDP_PORT          8113
+#define DEBUG_UDP_PORT          514
 #endif
+
+// If DEBUG_UDP_PORT is set to 514 syslog format is assumed
+// (https://tools.ietf.org/html/rfc3164)
+// DEBUG_UDP_FAC_PRI is the facility+priority
+#define DEBUG_UDP_FAC_PRI       (SYSLOG_LOCAL0 | SYSLOG_DEBUG)
 
 //------------------------------------------------------------------------------
 
@@ -123,7 +128,7 @@
 #define SYSTEM_CHECK_ENABLED    1               // Enable crash check by default
 #endif
 
-#ifndef SYSTEM_CHECK_MAX
+#ifndef SYSTEM_CHECK_TIME
 #define SYSTEM_CHECK_TIME       60000           // The system is considered stable after these many millis
 #endif
 
@@ -137,12 +142,17 @@
 //------------------------------------------------------------------------------
 
 #define EEPROM_SIZE             4096            // EEPROM size in bytes
+//#define EEPROM_RORATE_SECTORS   2             // Number of sectors to use for EEPROM rotation
+                                                // If not defined the firmware will use a number based
+                                                // on the number of available sectors
+
 #define EEPROM_RELAY_STATUS     0               // Address for the relay status (1 byte)
 #define EEPROM_ENERGY_COUNT     1               // Address for the energy counter (4 bytes)
 #define EEPROM_CUSTOM_RESET     5               // Address for the reset reason (1 byte)
 #define EEPROM_CRASH_COUNTER    6               // Address for the crash counter (1 byte)
 #define EEPROM_MESSAGE_ID       7               // Address for the MQTT message id (4 bytes)
-#define EEPROM_DATA_END         11              // End of custom EEPROM data block
+#define EEPROM_ROTATE_DATA      11              // Reserved for the EEPROM_ROTATE library (3 bytes)
+#define EEPROM_DATA_END         14              // End of custom EEPROM data block
 
 //------------------------------------------------------------------------------
 // HEARTBEAT
@@ -191,6 +201,10 @@
 // BUTTON
 //------------------------------------------------------------------------------
 
+#ifndef BUTTON_SUPPORT
+#define BUTTON_SUPPORT              1
+#endif
+
 #ifndef BUTTON_DEBOUNCE_DELAY
 #define BUTTON_DEBOUNCE_DELAY       50          // Debounce delay (ms)
 #endif
@@ -205,6 +219,14 @@
 
 #ifndef BUTTON_LNGLNGCLICK_DELAY
 #define BUTTON_LNGLNGCLICK_DELAY    10000       // Time in ms holding the button down to get a long-long click
+#endif
+
+//------------------------------------------------------------------------------
+// LED
+//------------------------------------------------------------------------------
+
+#ifndef LED_SUPPORT
+#define LED_SUPPORT                 1
 #endif
 
 //------------------------------------------------------------------------------
@@ -263,11 +285,14 @@
 #define WIFI_RECONNECT_INTERVAL     180000              // If could not connect to WIFI, retry after this time in ms
 #endif
 
+#ifndef WIFI_MAX_NETWORKS
 #define WIFI_MAX_NETWORKS           5                   // Max number of WIFI connection configurations
-
-#ifndef WIFI_AP_MODE
-#define WIFI_AP_MODE                AP_MODE_ALONE
 #endif
+
+#ifndef WIFI_AP_CAPTIVE
+#define WIFI_AP_CAPTIVE             1                   // Captive portal enabled when in AP mode
+#endif
+
 
 #ifndef WIFI_SLEEP_MODE
 #define WIFI_SLEEP_MODE             WIFI_NONE_SLEEP     // WIFI_NONE_SLEEP, WIFI_LIGHT_SLEEP or WIFI_MODEM_SLEEP
@@ -363,6 +388,15 @@
 #ifndef WEB_PORT
 #define WEB_PORT                    80          // HTTP port
 #endif
+
+// Defining a WEB_REMOTE_DOMAIN will enable Cross-Origin Resource Sharing (CORS)
+// so you will be able to login to this device from another domain. This will allow
+// you to manage all ESPurna devices in your local network from a unique installation
+// of the web UI. This installation could be in a local server (a Raspberry Pi, for instance)
+// or in the Internet. Since the WebUI is just one compressed file with HTML, CSS and JS
+// there are no special requirements. Any static web server will do (NGinx, Apache, Lighttpd,...).
+// The only requirement is that the resource must be available under this domain.
+#define WEB_REMOTE_DOMAIN           "http://tinkerman.cat"
 
 // -----------------------------------------------------------------------------
 // WEBSOCKETS
@@ -500,6 +534,10 @@
 #define UART_MQTT_BAUDRATE          115200      // Serial speed
 #endif
 
+#ifndef UART_MQTT_TERMINATION
+#define UART_MQTT_TERMINATION      '\n'         // Termination character
+#endif
+
 #define UART_MQTT_BUFFER_SIZE       100         // UART buffer size
 
 // -----------------------------------------------------------------------------
@@ -547,9 +585,9 @@
 
 #ifndef MQTT_AUTOCONNECT
 #define MQTT_AUTOCONNECT            1               // If enabled and MDNS_SERVER_SUPPORT=1 will perform an autodiscover and
+                                                    // autoconnect to the first MQTT broker found if none defined
 #endif
 
-                                                    // autoconnect to the first MQTT broker found if none defined
 #ifndef MQTT_SERVER
 #define MQTT_SERVER                 ""              // Default MQTT broker address
 #endif
@@ -579,7 +617,7 @@
 #endif
 
 #ifndef MQTT_KEEPALIVE
-#define MQTT_KEEPALIVE              30              // MQTT keepalive value
+#define MQTT_KEEPALIVE              300             // MQTT keepalive value
 #endif
 
 
@@ -667,6 +705,7 @@
 #define MQTT_TOPIC_UARTOUT          "uartout"
 #define MQTT_TOPIC_LOADAVG          "loadavg"
 #define MQTT_TOPIC_BOARD            "board"
+#define MQTT_TOPIC_PULSE            "pulse"
 
 // Light module
 #define MQTT_TOPIC_CHANNEL          "channel"
@@ -761,11 +800,8 @@
 #define LIGHT_MAX_BRIGHTNESS    255         // Maximun brightness value
 #endif
 
-//#define LIGHT_MIN_MIREDS        153       // NOT USED (yet)! // Default to the Philips Hue value that HA has always assumed
-//#define LIGHT_MAX_MIREDS        500       // NOT USED (yet)! // https://developers.meethue.com/documentation/core-concepts
-#ifndef LIGHT_DEFAULT_MIREDS
-#define LIGHT_DEFAULT_MIREDS    153         // Default value used by MQTT. This value is __NEVRER__ applied!
-#endif
+#define LIGHT_MIN_MIREDS        153      // Default to the Philips Hue value that HA also use.
+#define LIGHT_MAX_MIREDS        500      // https://developers.meethue.com/documentation/core-concepts
 
 #ifndef LIGHT_STEP
 #define LIGHT_STEP              32          // Step size
@@ -776,8 +812,17 @@
 #endif
 
 #ifndef LIGHT_USE_WHITE
-#define LIGHT_USE_WHITE         0           // Use white channel whenever RGB have the same value
+#define LIGHT_USE_WHITE         0           // Use the 4th channel as (Warm-)White LEDs
 #endif
+
+#ifndef LIGHT_USE_CCT
+#define LIGHT_USE_CCT           0           // Use the 5th channel as Coldwhite LEDs, LIGHT_USE_WHITE must be 1.
+#endif
+
+// Used when LIGHT_USE_WHITE AND LIGHT_USE_CCT is 1 - (1000000/Kelvin = MiReds)
+// Warning! Don't change this yet, NOT FULLY IMPLEMENTED!
+#define LIGHT_COLDWHITE_MIRED   153         // Coldwhite Strip, Value must be __BELOW__ W2!! (Default: 6535 Kelvin/153 MiRed)
+#define LIGHT_WARMWHITE_MIRED   500         // Warmwhite Strip, Value must be __ABOVE__ W1!! (Default: 2000 Kelvin/500 MiRed)
 
 #ifndef LIGHT_USE_GAMMA
 #define LIGHT_USE_GAMMA         0           // Use gamma correction for color channels
@@ -1127,6 +1172,38 @@
 
 #endif
 
+//Remote Buttons SET 3 (samsung AA59-00608A 8 Toggle Buttons for generic 8CH module)
+#if IR_BUTTON_SET == 3
+/*
+   +------+------+------+
+   |  1   |  2   |  3   |
+   +------+------+------+
+   |  4   |  5   |  6   |
+   +------+------+------+
+   |  7   |  8   |  9   |
+   +------+------+------+
+   |      |  0   |      |
+   +------+------+------+
+*/
+#define IR_BUTTON_COUNT 10
+
+ const unsigned long IR_BUTTON[IR_BUTTON_COUNT][3] PROGMEM = {
+
+        { 0xE0E020DF, IR_BUTTON_MODE_TOGGLE, 0 }, // Toggle Relay #0
+        { 0xE0E0A05F, IR_BUTTON_MODE_TOGGLE, 1 }, // Toggle Relay #1
+        { 0xE0E0609F, IR_BUTTON_MODE_TOGGLE, 2 }, // Toggle Relay #2
+
+        { 0xE0E010EF, IR_BUTTON_MODE_TOGGLE, 3 }, // Toggle Relay #3
+        { 0xE0E0906F, IR_BUTTON_MODE_TOGGLE, 4 }, // Toggle Relay #4
+        { 0xE0E050AF, IR_BUTTON_MODE_TOGGLE, 5 }, // Toggle Relay #5
+
+        { 0xE0E030CF, IR_BUTTON_MODE_TOGGLE, 6 }, // Toggle Relay #6
+        { 0xE0E0B04F, IR_BUTTON_MODE_TOGGLE, 7 } // Toggle Relay #7
+      //{ 0xE0E0708F, IR_BUTTON_MODE_TOGGLE, 8 } //Extra Button
+
+      //{ 0xE0E08877, IR_BUTTON_MODE_TOGGLE, 9 } //Extra Button
+ };
+#endif
 #endif // IR_SUPPORT
 
 //--------------------------------------------------------------------------------
@@ -1146,3 +1223,65 @@
 
 #define RF_DEBOUNCE                 500
 #define RF_LEARN_TIMEOUT            60000
+
+//--------------------------------------------------------------------------------
+// Custom RFM69 to MQTT bridge
+// Check http://tinkerman.cat/rfm69-wifi-gateway/
+// Enable support by passing RFM69_SUPPORT=1 build flag
+//--------------------------------------------------------------------------------
+
+#ifndef RFM69_SUPPORT
+#define RFM69_SUPPORT               0
+#endif
+
+#ifndef RFM69_MAX_TOPICS
+#define RFM69_MAX_TOPICS            50
+#endif
+
+#ifndef RFM69_DEFAULT_TOPIC
+#define RFM69_DEFAULT_TOPIC         "/rfm69gw/{node}/{key}"
+#endif
+
+#ifndef RFM69_NODE_ID
+#define RFM69_NODE_ID               2
+#endif
+
+#ifndef RFM69_GATEWAY_ID
+#define RFM69_GATEWAY_ID            2
+#endif
+
+#ifndef RFM69_NETWORK_ID
+#define RFM69_NETWORK_ID            164
+#endif
+
+#ifndef RFM69_PROMISCUOUS
+#define RFM69_PROMISCUOUS           1
+#endif
+
+#ifndef RFM69_PROMISCUOUS_SENDS
+#define RFM69_PROMISCUOUS_SENDS     0
+#endif
+
+#ifndef RFM69_FREQUENCY
+#define RFM69_FREQUENCY             RF69_868MHZ
+#endif
+
+#ifndef RFM69_ENCRYPTKEY
+#define RFM69_ENCRYPTKEY            "fibonacci0123456"
+#endif
+
+#ifndef RFM69_CS_PIN
+#define RFM69_CS_PIN                SS
+#endif
+
+#ifndef RFM69_IRQ_PIN
+#define RFM69_IRQ_PIN               5
+#endif
+
+#ifndef RFM69_RESET_PIN
+#define RFM69_RESET_PIN             7
+#endif
+
+#ifndef RFM69_IS_RFM69HW
+#define RFM69_IS_RFM69HW            0
+#endif

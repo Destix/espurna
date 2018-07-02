@@ -42,7 +42,15 @@ void setup() {
     // Basic modules, will always run
     // -------------------------------------------------------------------------
 
-    // Init EEPROM, Serial, SPIFFS and system check
+    // Serial debug
+    #if DEBUG_SUPPORT
+        debugSetup();
+    #endif
+
+    // Init EEPROM
+    eepromSetup();
+
+    // Init Serial, SPIFFS and system check
     systemSetup();
 
     // Init persistance and terminal features
@@ -81,7 +89,7 @@ void setup() {
         wsSetup();
         apiSetup();
         #if DEBUG_WEB_SUPPORT
-            debugSetup();
+            debugWebSetup();
         #endif
     #endif
 
@@ -91,8 +99,12 @@ void setup() {
     #endif
 
     relaySetup();
-    buttonSetup();
-    ledSetup();
+    #if BUTTON_SUPPORT
+        buttonSetup();
+    #endif
+    #if LED_SUPPORT
+        ledSetup();
+    #endif
     #if MQTT_SUPPORT
         mqttSetup();
     #endif
@@ -131,6 +143,9 @@ void setup() {
     #endif
     #if THINGSPEAK_SUPPORT
         tspkSetup();
+    #endif
+    #if RFM69_SUPPORT
+        rfm69Setup();
     #endif
     #if RF_SUPPORT
         rfSetup();
