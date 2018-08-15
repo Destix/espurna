@@ -1043,6 +1043,50 @@ void migrate() {
             setSetting("board", 80);
             setSetting("btnGPIO", 0, 0);
 
+        #elif defined(ITEAD_SONOFF_IFAN02)
+
+            setSetting("board", 81);
+
+            setSetting("btnGPIO", 0, 0);
+            setSetting("btnGPIO", 1, 9);
+            setSetting("btnGPIO", 2, 10);
+            setSetting("btnGPIO", 3, 14);
+
+            setSetting("ledGPIO", 1, 13);
+            setSetting("ledLogic", 1, 1);
+
+            setSetting("relayGPIO", 0, 12);
+            setSetting("relayGPIO", 1, 5);
+            setSetting("relayGPIO", 2, 4);
+            setSetting("relayGPIO", 3, 15);
+            setSetting("relayType", 0, RELAY_TYPE_NORMAL);
+            setSetting("relayType", 1, RELAY_TYPE_NORMAL);
+            setSetting("relayType", 2, RELAY_TYPE_NORMAL);
+            setSetting("relayType", 3, RELAY_TYPE_NORMAL);
+
+        #elif defined(GENERIC_AG_L4)
+
+            setSetting("board", 82);
+
+            setSetting("btnGPIO", 0, 4);
+            setSetting("btnGPIO", 1, 2);
+            setSetting("btnRelay", 0, 0);
+
+            setSetting("ledGPIO", 0, 5);
+            setSetting("ledGPIO", 1, 16);
+            setSetting("ledLogic", 0, 0);
+            setSetting("ledLogic", 1, 1);
+
+            setSetting("relayProvider", RELAY_PROVIDER_LIGHT);
+            setSetting("lightProvider", LIGHT_PROVIDER_DIMMER);
+            setSetting("chGPIO", 0, 14);
+            setSetting("chGPIO", 1, 13);
+            setSetting("chGPIO", 2, 12);
+            setSetting("chLogic", 0, 0);
+            setSetting("chLogic", 1, 0);
+            setSetting("chLogic", 2, 0);
+            setSetting("relays", 1);
+
         #else
 
             // Allow users to define new settings without migration config

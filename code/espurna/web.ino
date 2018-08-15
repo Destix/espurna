@@ -45,6 +45,8 @@ char _last_modified[50];
 std::vector<uint8_t> * _webConfigBuffer;
 bool _webConfigSuccess = false;
 
+std::vector<web_request_callback_f> _web_request_callbacks;
+
 // -----------------------------------------------------------------------------
 // HOOKS
 // -----------------------------------------------------------------------------
@@ -91,7 +93,9 @@ void _onGetConfig(AsyncWebServerRequest *request) {
     response->printf("{\n\"app\": \"%s\"", APP_NAME);
     response->printf(",\n\"version\": \"%s\"", APP_VERSION);
     response->printf(",\n\"backup\": \"1\"");
-    response->printf(",\n\"timestamp\": \"%s\"", ntpDateTime().c_str());
+    #if NTP_SUPPORT
+        response->printf(",\n\"timestamp\": \"%s\"", ntpDateTime().c_str());
+    #endif
 
     // Write the keys line by line (not sorted)
     unsigned long count = settingsKeyCount();
@@ -326,6 +330,19 @@ void _onUpgradeData(AsyncWebServerRequest *request, String filename, size_t inde
     }
 }
 
+void _onRequest(AsyncWebServerRequest *request){
+
+    // Send request to subscribers
+    for (unsigned char i = 0; i < _web_request_callbacks.size(); i++) {
+        bool response = (_web_request_callbacks[i])(request);
+        if (response) return;
+    }
+
+    // No subscriber handled the request, return a 404
+    request->send(404);
+
+}
+
 // -----------------------------------------------------------------------------
 
 bool webAuthenticate(AsyncWebServerRequest *request) {
@@ -343,6 +360,10 @@ bool webAuthenticate(AsyncWebServerRequest *request) {
 
 AsyncWebServer * webServer() {
     return _server;
+}
+
+void webRequestRegister(web_request_callback_f callback) {
+    _web_request_callbacks.push_back(callback);
 }
 
 unsigned int webPort() {
@@ -373,6 +394,8 @@ void webSetup() {
     #if WEB_EMBEDDED
         _server->on("/index.html", HTTP_GET, _onHome);
     #endif
+
+    // Other entry points
     _server->on("/reset", HTTP_GET, _onReset);
     _server->on("/config", HTTP_GET, _onGetConfig);
     _server->on("/config", HTTP_POST | HTTP_PUT, _onPostConfig, _onPostConfigData);
@@ -389,10 +412,8 @@ void webSetup() {
             });
     #endif
 
-    // 404
-    _server->onNotFound([](AsyncWebServerRequest *request){
-        request->send(404);
-    });
+    // Handle other requests, including 404
+    _server->onNotFound(_onRequest);
 
     // Run server
     #if ASYNC_TCP_SSL_ENABLED & WEB_SSL_ENABLED
@@ -401,6 +422,7 @@ void webSetup() {
     #else
         _server->begin();
     #endif
+    
     DEBUG_MSG_P(PSTR("[WEBSERVER] Webserver running on port %u\n"), port);
 
 }
